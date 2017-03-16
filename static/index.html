@@ -47,15 +47,19 @@ world = {};
 //XXX: TODO Make this prettier!
 function drawCircle(context,entity) {
     with(context) {
-        beginPath();                
-        lineWidth = 3;
         var x = entity["x"];
         var y = entity["y"];
         //moveTo(x,y);
-        fillStyle = entity["colour"];
-        strokeStyle = fillStyle;
-        arc(x, y, (entity["radius"])?entity["radius"]:50, 0, 2.0 * Math.PI, false);  
-        stroke();                                
+        var color = entity["colour"];
+        var fillStyle = "grey";
+        //Based on https://www.w3schools.com/html/html5_canvas.asp
+        if (color=="green") {
+            var font = "20px Arial";
+            fillText("❄", x - 15, y);
+        } else {
+            var font = "50px Arial";
+            fillText("☃", x - 25, y);
+        }
     }
 }
 
@@ -254,6 +258,7 @@ function wsSetup() {
     socket = new WebSocket(url);
     socket.onopen = function() {
         //XXX: TODO What are you going to do here?
+        socket.send(JSON.parse(world))
     };
     socket.onerror = function(msg) {
         debug("WebSocket Error:" + msg.data);
@@ -261,7 +266,8 @@ function wsSetup() {
     socket.onmessage = function(msg) {  
         try {
             debug("WebSocket Recv:" + msg.data);
-            //XXX: TODO What are you going to do here?            
+            //XXX: TODO What are you going to do here?
+            world = JSON.stringify(msg.data)
         } catch (e) {
             alert("socket on message: " + e);
         }
