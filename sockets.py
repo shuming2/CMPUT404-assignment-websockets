@@ -16,7 +16,6 @@
 import flask
 from flask import Flask, request
 from flask import redirect
-from flask import render_template
 from flask_sockets import Sockets
 import gevent
 from gevent import queue
@@ -61,11 +60,14 @@ class World:
     def world(self):
         return self.space
 
-myWorld = World()        
-q = gevent.queue.Queue()
+myWorld = World()
+clients = list()
+
 def set_listener( entity, data ):
     ''' do something with the update ! '''
-    q.put({entity: data})
+    msg = json.dumps({'entity':entity, 'data':data})
+    for client in clients:
+        client.put_nowait(msg)
 
 myWorld.add_set_listener( set_listener )
         
@@ -77,21 +79,41 @@ def hello():
 def read_ws(ws,client):
     '''A greenlet function that reads from the websocket and updates the world'''
     # XXX: TODO IMPLEMENT ME
-    msg = ws.receive(client)
-    for ele in msg:
-        print(ele)
-    return None
+    try:
+        while True:
+            msg = ws.receive()
+            if (msg is not None):
+                jsonmsg = json.loads(msg)
+                myWorld.set(jsonmsg.get('entity'), jsonmsg.get('data'))
+                client.put_nowait(msg)
+            else:
+                break
+    except:
+        '''Done'''
 
 @sockets.route('/subscribe')
 def subscribe_socket(ws):
     '''Fufill the websocket URL of /subscribe, every update notify the
        websocket and read updates from the websocket '''
     # XXX: TODO IMPLEMENT ME
-    while not ws.closed:
-        while not q.empty():
-            ws.send(q.get())
-    read_ws(ws, client=)
-    return None
+    client = gevent.queue.Queue()
+    clients.append(client)
+    g = gevent.spawn(read_ws, ws, client)
+    # Send the world to client
+    for key in myWorld.world().keys():
+        client.put_nowait(json.dumps({'entity': key, 'data': myWorld.world()[key]}))
+
+    try:
+        while True:
+            # block here
+            msg = client.get()
+            ws.send(msg)
+    except Exception as e:  # WebSocketError as e:
+        print("WS Error %s" % e)
+    finally:
+        clients.remove(client)
+        gevent.kill(g)
+
 
 
 def flask_post_json():
@@ -113,19 +135,19 @@ def update(entity):
 @app.route("/world", methods=['POST','GET'])    
 def world():
     '''you should probably return the world here'''
-    return json.dump(myWorld.world(), sort_keys=True), 200
+    return json.dumps(myWorld.world(), sort_keys=True), 200
 
 @app.route("/entity/<entity>")    
 def get_entity(entity):
     '''This is the GET version of the entity interface, return a representation of the entity'''
-    return json.dump(myWorld.get(entity), sort_keys=True), 200
+    return json.dumps(myWorld.get(entity), sort_keys=True), 200
 
 
 @app.route("/clear", methods=['POST','GET'])
 def clear():
     '''Clear the world out!'''
     myWorld.clear()
-    return json.dump(myWorld.world(), sort_keys=True), 200
+    return json.dumps(myWorld.world(), sort_keys=True), 200
 
 
 
